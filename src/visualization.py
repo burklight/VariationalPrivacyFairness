@@ -1,24 +1,25 @@
 import numpy as np
 import matplotlib.pyplot as plt 
-from sklearn.gaussian_process import GaussianProcessRegressor
+import matplotlib.colors as colors 
+import os
 
-def plot_vs_figure(x, y, xname, yname, figsdir, figname, maxval=None):
+def plot_embeddings(embedding, embedding_s, s, figsdir):
 
-    fig, ax = plt.subplots()
-    model = GaussianProcessRegressor()
-    model.fit(x.reshape(-1,1), y)
-    x_plot = np.linspace(x.min(), x.max(), 100)
-    y_plot = model.predict(x_plot.reshape(-1,1))
-    plt.scatter(x,y,marker='.',color='black')
-    plt.plot(x_plot, y_plot, linestyle = ':', color='black')
-    plt.xlabel(xname)
-    plt.ylabel(yname)
-    plt.savefig(figsdir + figname + '.eps', format='eps')
+    _plot_embedding(embedding, s, os.path.join(figsdir,'normal_reduction'))
+    _plot_embedding(embedding_s, s, os.path.join(figsdir,'secret_reduction'))
 
-def plot_figure(x, y, xname, yname, figsdir, figname):
+def _plot_embedding(embedding, s, name_fig):
 
-    fig, ax = plt.subplots()
-    plt.plot(x, y, marker='.',linestyle = ':', color='black')
-    plt.xlabel(xname)
-    plt.ylabel(yname)
-    plt.savefig(figsdir + figname + '.eps', format='eps')
+    cmap_3 = colors.ListedColormap(['red','green','blue'])
+
+    fig, ax = plt.subplots(figsize=(6,5))
+    if s is -1:
+        scatter = ax.scatter(embedding[:,0],embedding[:,1], s=0.6, color='black')
+    else:
+        scatter = ax.scatter(embedding[:,0],embedding[:,1],c=s, s=0.6, cmap=cmap_3)
+        fig.colorbar(scatter, ax=ax, boundaries=np.arange(0,4)-0.5, ticks=np.arange(0,3))
+    plt.xticks([])
+    plt.yticks([])
+    plt.tight_layout()
+    plt.savefig(name_fig + '.eps', format='eps')
+    plt.close()

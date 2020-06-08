@@ -16,6 +16,8 @@ class MLP(torch.nn.Module):
             torch.nn.ReLU6(),
             torch.nn.Linear(hidden_size, hidden_size),
             torch.nn.ReLU6(),
+            torch.nn.Linear(hidden_size, hidden_size),
+            torch.nn.ReLU6(),
             torch.nn.Linear(hidden_size, 1),
         )
     
@@ -30,7 +32,7 @@ class CNN(torch.nn.Module):
         super(CNN, self).__init__()
 
         self.conv1 = torch.nn.Sequential(
-            torch.nn.Conv2d(1,5,5,1,padding=1),
+            torch.nn.Conv2d(3,5,5,1,padding=1),
             torch.nn.MaxPool2d(5,2,2),
             torch.nn.ReLU6(inplace=True),
         )
@@ -90,8 +92,14 @@ class MINE(torch.nn.Module):
     
     def train(self, data_X, data_Y, learning_rate = 1e-3, batch_size = 256, n_iterations = int(5e3), n_verbose = 1000, n_window = 100, decay_rate = 0.9, n_decay = -1, save_progress=200):
 
-        data_X = torch.FloatTensor(data_X).view(-1,self.dimX)
-        data_Y = torch.FloatTensor(data_Y).view(-1,self.dimY)
+        if torch.is_tensor(data_X):
+            data_X = data_X.view(-1,self.dimX).float() if self.dimX == 1 else data_X.float()
+        else: 
+            data_X = torch.FloatTensor(data_X).view(-1,self.dimX) if self.dimX == 1 else torch.FloatTensor(data_X)
+        if torch.is_tensor(data_Y):
+            data_Y = data_Y.view(-1,self.dimY).float() if self.dimY == 1 else data_Y.float()
+        else:
+            data_Y = torch.FloatTensor(data_Y).view(-1,self.dimY) if self.dimY == 1 else torch.FloatTensor(data_Y)
 
         device = 'cuda' if next(self.network.parameters()).is_cuda else 'cpu'
 

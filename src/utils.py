@@ -2,11 +2,12 @@ import torch
 import torchvision 
 import random 
 import numpy as np 
-import PIL
 import pandas as pd
 from sklearn import preprocessing
+import argparse
 
-torch.manual_seed(0)
+torch.manual_seed(2020)
+np.random.seed(2020)
 
 def weight_init(m):
     '''
@@ -28,23 +29,29 @@ def weight_init(m):
 
 class MNIST_dataset(torch.utils.data.Dataset):
 
-    def __init__(self,data,targets,data_hidden,transform=None):
+    def __init__(self,data,targets,data_hidden,transform=None,task='privacy'):
         self.data = data
         self.targets = targets
         self.hidden = data_hidden
         self.transform = transform
+        self.task = task
+        self.target_vals = 10
+        self.hidden_vals = 3
     
     def __getitem__(self,index):
         image, target, hidden = self.data[index], self.targets[index], self.hidden[index]
-        image, target, hidden = torchvision.transforms.functional.to_pil_image(datum), int(target), int(hidden)
+        image, target, hidden = torchvision.transforms.functional.to_pil_image(image), int(target), int(hidden)
         if self.transform is not None:
-            datum = self.transform(datum)
-        return image, target, hidden
+            image = self.transform(image)
+        if self.task == 'fairness':
+            return image, target, hidden
+        else: 
+            return image, image, hidden
     
     def __len__(self):
         return len(self.targets)
 
-def get_mnist():
+def get_mnist(task='privacy'):
 
     # Load normal MNIST dataset 
     trainset = torchvision.datasets.MNIST(root='../data', train=True, download=True, \
@@ -59,28 +66,34 @@ def get_mnist():
     for n in range(N_tr):
         data_n[n,data_hidden[n]] = trainset.data[n]
     data_n /= 255.0 
-    trainset = MNIST_dataset(data_n,trainset.targets,data_hidden,trainset.transform)
+    trainset = MNIST_dataset(data_n,trainset.targets,data_hidden,trainset.transform,task)
     N_tst = len(testset)
     data_n = torch.zeros(N_tst,3,28,28)
     data_hidden = torch.arange(len(testset.targets)) % 3
     for n in range(N_tst):
         data_n[n,data_hidden[n]] = testset.data[n]
     data_n /= 255.0 
-    testset = MNIST_dataset(data_n,testset.targets,data_hidden,testset.transform)
+    testset = MNIST_dataset(data_n,testset.targets,data_hidden,testset.transform,task)
 
     return trainset, testset
 
 class Adult_dataset(torch.utils.data.Dataset):
 
-    def __init__(self,data,targets,data_hidden,transform=None):
+    def __init__(self,data,targets,data_hidden,transform=None,task='fairness'):
         self.data = data
         self.targets = targets
         self.hidden = data_hidden
         self.transform = transform
+        self.target_vals = 2
+        self.hidden_vals = 2
+        self.task = task
     
     def __getitem__(self,index):
         datum, target, hidden = self.data[index], self.targets[index], self.hidden[index]
-        datum, target, hidden = float(datum), int(target), int(hidden)
+        if self.task == 'fairness':
+            target, hidden = int(target), int(hidden)
+        else: 
+            hidden = int(hidden)
         if self.transform is not None:
             datum = self.transform(datum)
         return datum, target, hidden
@@ -88,7 +101,7 @@ class Adult_dataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.targets)
 
-def get_adult():
+def get_adult(task='fairness'):
 
     column_names = ['age', 'workclass', 'fnlwgt', 'education', 'education-num', 'marital-status', 'occupation', \
         'relationship', 'race', 'sex', 'capital-gain', 'capital-loss','hours-per-week', 'native-country','salary']
@@ -96,6 +109,7 @@ def get_adult():
         'workclass': ['Private, Self-emp-not-inc, Self-emp-inc, Federal-gov, Local-gov, State-gov, Without-pay, Never-worked'],
         'education': ['Bachelors, Some-college, 11th, HS-grad, Prof-school, Assoc-acdm, Assoc-voc, 9th, 7th-8th, \
             12th, Masters, 1st-4th, 10th, Doctorate, 5th-6th, Preschool'],
+        'education-num' : ['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16'],
         'marital-status': ['Married-civ-spouse, Divorced, Never-married, Separated, Widowed, Married-spouse-absent,\
             Married-AF-spouse'],
         'occupation': ['Tech-support, Craft-repair, Other-service, Sales, Exec-managerial, Prof-specialty, \
@@ -113,6 +127,7 @@ def get_adult():
         dummy_variables[k] = [v.strip() for v in dummy_variables[k][0].split(',')]
     
     # Load Adult dataset
+    '''
     data_train = pd.read_csv(
         'https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data',
         names=column_names,header=None
@@ -121,68 +136,148 @@ def get_adult():
         'https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test',
         names=column_names,skiprows=1,header=None
     )
+    '''
+    data_train = pd.read_csv(
+        '../data/adult_us_cens/adult.data',
+        names=column_names,header=None
+    )
+    data_test = pd.read_csv(
+        '../data/adult_us_cens/adult.test',
+        names=column_names,skiprows=1,header=None
+    )
     data_train = data_train.apply(lambda v: v.astype(str).str.strip() if v.dtype == "object" else v)
     data_test = data_test.apply(lambda v: v.astype(str).str.strip() if v.dtype == "object" else v)
 
-    '''
-    def get_variables(data):
+    def get_variables(data, task='fairness'):
 
-        dummy_columns = list(dummy_variables.keys())
-        dummy_columns.remove('sex')
-        for k in dummy_variables:
-            data[k] = data[k].astype('category').cat.set_categories(dummy_variables[k])
-        X = pd.get_dummies(data.drop('sex', axis=1).drop('salary',axis=1), columns=dummy_columns).to_numpy()
-        S = data['sex'].to_numpy()
-        T = data['salary'].to_numpy()
-        T = np.where(np.logical_or(T=='<=50K',T=='<=50K.'),0,1)
-        S = np.where(S=='Male',0,1)
-
-        return X.astype(float), S, T
-        
-    X_train, S_train, T_train = get_variables(data_train)
-    X_test, S_test, T_test = get_variables(data_test)
-    X_mean, X_std = X_train[:,:6].mean(), X_train[:,:6].std()
-    X_train[:,:6] = (X_train[:,:6]-X_mean) / (X_std) 
-    X_test[:,:6] = (X_test[:,:6]-X_mean) / (X_std)
-    '''
-
-    def get_variables(data):
-    
         le = preprocessing.LabelEncoder()
         dummy_columns = list(dummy_variables.keys())
         dummy_columns.remove('sex')
         data[dummy_columns] = data[dummy_columns].apply(lambda col: le.fit_transform(col))
-        X = data.drop('sex',axis=1).drop('salary',axis=1).to_numpy()
+        X = data.drop('sex',axis=1).drop('salary',axis=1).to_numpy().astype(float)
         S = data['sex'].to_numpy()
-        T = data['salary'].to_numpy()
-        T = np.where(np.logical_or(T=='<=50K',T=='<=50K.'),0,1)
+        if task=='fairness':
+            T = data['salary'].to_numpy()
+            T = np.where(np.logical_or(T=='<=50K',T=='<=50K.'),0,1)
+        else:
+            T = data.drop('sex',axis=1).drop('salary',axis=1).to_numpy().astype(float)
         S = np.where(S=='Male',0,1)
 
-        return X.astype(float), S, T 
+        return X, S, T
     
-    X_train, S_train, T_train = get_variables(data_train)
-    X_test, S_test, T_test = get_variables(data_test)
+    X_train, S_train, T_train = get_variables(data_train,task)
+    X_test, S_test, T_test = get_variables(data_test,task)
+    X_mean, X_std = X_train.mean(0), X_train.std(0)
+    X_train = (X_train-X_mean) / (X_std) 
+    X_test = (X_test-X_mean) / (X_std)
+    if task == 'privacy':
+        for i in range(len(T_train[1,:])):
+            if len(np.unique(T_train[:,i])) > 42:
+                t_mean, t_std = T_train[:,i].mean(), T_train[:,i].std() 
+                T_train[:,i] = (T_train[:,i]-t_mean) / t_std
+                T_test[:,i] = (T_test[:,i]-t_mean) / t_std
+
+    trainset = Adult_dataset(X_train, T_train, S_train, task=task)
+    testset = Adult_dataset(X_test, T_test, S_test, task=task)
+
+    return trainset, testset
+
+class German_dataset(torch.utils.data.Dataset):
+
+    def __init__(self,data,targets,data_hidden,transform=None,task='fairness'):
+        self.data = data
+        self.targets = targets
+        self.hidden = data_hidden
+        self.transform = transform
+        self.target_vals = 2
+        self.hidden_vals = 2
+        self.task = task
+    
+    def __getitem__(self,index):
+        datum, target, hidden = self.data[index], self.targets[index], self.hidden[index]
+        if self.task == 'fairness':
+            target, hidden = int(target), int(hidden)
+        else: 
+            hidden = int(hidden)
+        if self.transform is not None:
+            datum = self.transform(datum)
+        return datum, target, hidden
+    
+    def __len__(self):
+        return len(self.targets)
+
+
+def get_german(task='fairness'):
+
+    column_names = ['status_account', 'duration', 'credit_history', 'purpose', 'amount', \
+                'savings', 'employment', 'installment_rate', 'gender', 'other_debtors', \
+                'residence', 'property', 'age', 'other_plans', 'housing', 'number_credits', \
+                'job', 'liabilities', 'telephone', 'foreign', 'evaluation']
+    data = pd.read_csv(
+        'https://archive.ics.uci.edu/ml/machine-learning-databases/statlog/german/german.data',
+        names=column_names, sep=' ', header=None
+    )
+
+    # Pre-process the data
+    data = data.apply(lambda v: v.astype(str).str.strip() if v.dtype == "object" else v)
+    #data.loc[data.age <= 25, 'age'] = 1    # Calders threshold
+    #data.loc[data.age > 25, 'age'] = 0     # Calders threshold
+    data.loc[data.gender != 'A92','gender'] = 0
+    data.loc[data.gender == 'A92','gender'] = 1
+    le = preprocessing.LabelEncoder()
+    column_names_categorical = np.array(column_names)[data.nunique().values < 15]
+    column_names_real = np.array(column_names)[data.nunique().values >= 15]
+    data[column_names_categorical] = data[column_names_categorical].apply(lambda col: le.fit_transform(col))
+    msk = np.random.rand(len(data)) < 0.7
+    data_train = data[msk] 
+    data_test = data[~msk]
+    mean = data_train[column_names_real].mean()
+    std = data_train[column_names_real].std()
+    data_train[column_names_real] = (data_train[column_names_real] - mean) / std
+    data_test[column_names_real] = (data_test[column_names_real] - mean) / std
+
+    def get_variables(data, task='fairness'):
+
+        X = data.drop('gender',axis=1).drop('evaluation',axis=1).to_numpy().astype(float)
+        S = data['gender'].to_numpy()
+        if task=='fairness':
+            T = data['evaluation'].to_numpy()
+        else:
+            T = data.drop('gender',axis=1).drop('evaluation',axis=1).to_numpy().astype(float)
+
+        return X, S, T
+    
+    X_train, S_train, T_train = get_variables(data_train,task)
+    X_test, S_test, T_test = get_variables(data_test,task)
+
+    # Finish pre-processing. Input variables are all normalized.
     X_mean, X_std = X_train.mean(0), X_train.std(0)
     X_train = (X_train-X_mean) / (X_std) 
     X_test = (X_test-X_mean) / (X_std)
 
-    trainset = Adult_dataset(X_train, T_train, S_train)
-    testset = Adult_dataset(X_test, T_test, S_test)
+    trainset = German_dataset(X_train, T_train, S_train, task=task)
+    testset = German_dataset(X_test, T_test, S_test, task=task)
 
     return trainset, testset
 
 
-class US_dataset(torch.utils.data.Dataset):
+class Compas_dataset(torch.utils.data.Dataset):
 
-    def __init__(self,data,targets,data_hidden,transform=None):
+    def __init__(self,data,targets,data_hidden,transform=None,task='fairness'):
         self.data = data
         self.targets = targets
         self.hidden = data_hidden
         self.transform = transform
+        self.target_vals = 2
+        self.hidden_vals = 2
+        self.task = task
     
     def __getitem__(self,index):
         datum, target, hidden = self.data[index], self.targets[index], self.hidden[index]
-        datum, target, hidden = float(datum), int(target), int(hidden)
+        if self.task == 'fairness':
+            target, hidden = int(target), int(hidden)
+        else: 
+            hidden = int(hidden)
         if self.transform is not None:
             datum = self.transform(datum)
         return datum, target, hidden
@@ -190,63 +285,117 @@ class US_dataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.targets)
 
+def get_compas(task='fairness'):
 
-def get_us_cens():
+    data = pd.read_csv(
+        '../data/1498_2680_bundle_archive/propublicaCompassRecividism_data_fairml.csv/propublica_data_for_fairml.csv',
+        header=0,sep=','
+    )
 
-    column_names = ['age', 'workclass', 'fnlwgt', 'education', 'education-num', 'marital-status', 'occupation', \
-        'relationship', 'race', 'sex', 'capital-gain', 'capital-loss','hours-per-week', 'native-country','salary']
-    dummy_variables = {
-        'workclass': ['Private, Self-emp-not-inc, Self-emp-inc, Federal-gov, Local-gov, State-gov, Without-pay, Never-worked'],
-        'education': ['Bachelors, Some-college, 11th, HS-grad, Prof-school, Assoc-acdm, Assoc-voc, 9th, 7th-8th, \
-            12th, Masters, 1st-4th, 10th, Doctorate, 5th-6th, Preschool'],
-        'marital-status': ['Married-civ-spouse, Divorced, Never-married, Separated, Widowed, Married-spouse-absent,\
-            Married-AF-spouse'],
-        'occupation': ['Tech-support, Craft-repair, Other-service, Sales, Exec-managerial, Prof-specialty, \
-            Handlers-cleaners, Machine-op-inspct, Adm-clerical, Farming-fishing, Transport-moving, Priv-house-serv, \
-            Protective-serv, Armed-Forces'],
-        'relationship': ['Wife, Own-child, Husband, Not-in-family, Other-relative, Unmarried'],
-        'race': ['White, Asian-Pac-Islander, Amer-Indian-Eskimo, Other, Black'],
-        'sex': ['Female, Male'],
-        'native-country' : ['United-States, Cambodia, England, Puerto-Rico, Canada, Germany, Outlying-US(Guam-USVI-etc), \
-            India, Japan, Greece, South, China, Cuba, Iran, Honduras, Philippines, Italy, Poland, Jamaica, Vietnam, \
-            Mexico, Portugal, Ireland, France, Dominican-Republic, Laos, Ecuador, Taiwan, Haiti, Columbia, Hungary, \
-            Guatemala, Nicaragua, Scotland, Thailand, Yugoslavia, El-Salvador, Trinadad&Tobago, Peru, Hong, Holand-Netherlands']
-    }
-    for k in dummy_variables:
-        dummy_variables[k] = [v.strip() for v in dummy_variables[k][0].split(',')]
+    msk = np.zeros(len(data))
+    msk[:int(0.7*len(data))] = 1
+    msk = np.random.permutation(msk).astype('bool')
+    data_train = data[msk] 
+    data_test = data[~msk]
+
+    def get_variables(_data):
+        
+        X = _data.drop('Two_yr_Recidivism',axis=1).drop('African_American',axis=1).to_numpy()
+        S = _data['African_American'].to_numpy()
+        T = _data['Two_yr_Recidivism'].to_numpy()
+        
+        return X, S, T
+
+    X_train, S_train, T_train = get_variables(data_train)
+    X_test, S_test, T_test = get_variables(data_test)
+
+    if task == 'privacy':
+        T_train = X_train
+        T_test = X_test
     
-    # Load Adult dataset
-    data_train = pd.read_csv(
-        'https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data',
-        names=column_names,header=None
+    mean, std = X_train[:,0].mean(), X_train[:,0].std()
+    X_train = (X_train - mean) / std
+    X_test = (X_test - mean) / std
+    
+    trainset = Compas_dataset(X_train, T_train, S_train, task=task)
+    testset = Compas_dataset(X_test, T_test, S_test, task=task)
+
+    return trainset, testset
+
+class Default_dataset(torch.utils.data.Dataset):
+
+    def __init__(self,data,targets,data_hidden,transform=None,task='fairness'):
+        self.data = data
+        self.targets = targets
+        self.hidden = data_hidden
+        self.transform = transform
+        self.target_vals = 2
+        self.hidden_vals = 2
+        self.task = task
+    
+    def __getitem__(self,index):
+        datum, target, hidden = self.data[index], self.targets[index], self.hidden[index]
+        if self.task == 'fairness':
+            target, hidden = int(target), int(hidden)
+        else: 
+            hidden = int(hidden)
+        if self.transform is not None:
+            datum = self.transform(datum)
+        return datum, target, hidden
+    
+    def __len__(self):
+        return len(self.targets)
+
+def get_default(task='fairness'):
+
+    data = pd.read_excel(
+        'https://archive.ics.uci.edu/ml/machine-learning-databases/00350/default%20of%20credit%20card%20clients.xls',
+        sheet_name='Data', header=1, index_col=0
     )
-    data_test = pd.read_csv(
-        'https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test',
-        names=column_names,skiprows=1,header=None
-    )
-    data_train = data_train.apply(lambda v: v.astype(str).str.strip() if v.dtype == "object" else v)
-    data_test = data_test.apply(lambda v: v.astype(str).str.strip() if v.dtype == "object" else v)
+
+    categorical_names = data.keys()[data.nunique() < 15]
+    real_names = data.keys()[data.nunique() >= 15]
+    le = preprocessing.LabelEncoder()
+    data[categorical_names] = data[categorical_names].apply(lambda col: le.fit_transform(col))
+    msk = np.random.rand(len(data)) < 0.7
+    data_train = data[msk] 
+    data_test = data[~msk]
+    mean = data_train[real_names].mean()
+    std = data_train[real_names].std()
+    data_train[real_names] = (data_train[real_names]-mean)/std
+    data_test[real_names] = (data_test[real_names]-mean)/std
 
     def get_variables(data):
     
-        le = preprocessing.LabelEncoder()
-        dummy_columns = list(dummy_variables.keys())
-        data[dummy_columns] = data[dummy_columns].apply(lambda col: le.fit_transform(col))
-        X = data[['age','sex','education']].to_numpy()
-        S = data[['age','salary']].to_numpy()
-        T = data[['age','sex','education']].to_numpy()
+        X = data.drop('SEX',axis=1).drop('default payment next month',axis=1).to_numpy().astype(float)
+        S = data['SEX'].to_numpy()
+        T = data['default payment next month'].to_numpy()
 
-        return X.astype(float), S, T.astype(float)
+        return X, S, T
     
     X_train, S_train, T_train = get_variables(data_train)
     X_test, S_test, T_test = get_variables(data_test)
-    X_mean, X_std = X_train.mean(0), X_train.std(0)
-    X_train = (X_train-X_mean) / (X_std) 
-    X_test = (X_test-X_mean) / (X_std)   
-    T_train[:,0] = X_train[:,0]
-    T_test[:,0] = X_test[:,0]
-
-    trainset = US_dataset(X_train, T_train, S_train)
-    testset = US_dataset(X_test, T_test, S_test)
+    
+    trainset = Default_dataset(X_train, T_train, S_train, task=task)
+    testset = Default_dataset(X_test, T_test, S_test, task=task)
 
     return trainset, testset
+    
+def get_args():
+
+    parser = argparse.ArgumentParser(
+        description = 'Run the variational approach to the CPF or the CFB',
+        formatter_class = argparse.ArgumentDefaultsHelpFormatter
+    )
+
+    parser.add_argument('--experiment', type = int, default = 1, 
+        help = 'Experiment to perform. Meaning:\n \
+                1 - Example on the Colored MNIST dataset\n \
+                2 - Fairness on the Adult dataset\n \
+                3 - Fairness on the Colored MNIST dataset\n \
+                4 - Privacy on the Adult dataset\n \
+                5 - Privacy on the Colored MNIST dataset\n \
+                6 - Fairness on the COMPAS dataset\n \
+                7 - Privacy on the COMPAS dataset\n')
+
+    return parser.parse_args()

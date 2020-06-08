@@ -1,27 +1,36 @@
 import numpy as np 
 import math
+import torch
 
-def get_conditional_entropy(a, b):
+def get_conditional_entropy(a, b, avals = 2, bvals = 2):
 
-    ab_emp = np.zeros((2,2))
-    ab_emp[0,0] = np.sum((a == 0) & (b == 0)).astype(float)
-    ab_emp[0,1] = np.sum((a == 0) & (b == 1)).astype(float)
-    ab_emp[1,0] = np.sum((a == 1) & (b == 0)).astype(float)
-    ab_emp[1,1] = np.sum((a == 1) & (b == 1)).astype(float)
+    if torch.is_tensor(a):
+        a = a.numpy()
+    if torch.is_tensor(b):
+        b = b.numpy()
 
+    ab_emp = np.zeros((avals,bvals))
+    b_emp = np.zeros(bvals)
+    for j in range(bvals):
+        b_emp[j] = (b==j).sum().astype(float)
+        for i in range(avals):
+            ab_emp[i,j] = ((a == i) & (b == j)).sum().astype(float)
+    
     p_ab_emp = ab_emp / np.sum(ab_emp)
-    p_a_given_b_emp = ab_emp 
-    p_a_given_b_emp[0] /= np.sum(ab_emp, 1)[0]
-    p_a_given_b_emp[1] /= np.sum(ab_emp, 1)[1]
+    p_b_emp = b_emp / np.sum(b_emp) 
+    
+    H_A_given_B_approx = - np.sum(p_ab_emp * np.log(p_ab_emp / p_b_emp)) / math.log(2)
+    return H_A_given_B_approx
 
-    H_A_given_B_approx = - np.sum(p_ab_emp * np.log(p_a_given_b_emp)) / math.log(2)
-    return H_A_given_B_approx 
 
-def get_entropy(a):
+def get_entropy(a, avals = 2):
 
-    a_emp = np.zeros(2) 
-    a_emp[0] = np.sum(a == 0).astype(float)
-    a_emp[1] = np.sum(a == 1).astype(float)
+    if torch.is_tensor(a):
+        a = a.numpy()
+
+    a_emp = np.zeros(avals)
+    for i in range(avals):
+        a_emp[i] = (a == i).sum().astype(float) 
     
     p_a_emp = a_emp / np.sum(a_emp) 
 

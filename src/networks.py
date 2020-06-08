@@ -29,7 +29,7 @@ class ImageEncoderVec(torch.nn.Module):
     def __init__(self, input_dim, representation_dim):
         super(ImageEncoderVec,self).__init__() 
 
-        C = input_dim[1]
+        C = input_dim[0]
 
         self.func = torch.nn.Sequential(
             torch.nn.Conv2d(C,5,5,padding=1,stride=2),
@@ -54,16 +54,6 @@ class VectorEncoder(torch.nn.Module):
 
     def __init__(self, input_dim, representation_dim):
         super(VectorEncoder,self).__init__()
-
-        self.func = torch.nn.Sequential(
-            torch.nn.Linear(input_dim, 128),
-            torch.nn.BatchNorm1d(128),
-            torch.nn.ReLU6(),
-            torch.nn.Linear(128,32),
-            torch.nn.BatchNorm1d(32),
-            torch.nn.ReLU6(),
-            torch.nn.Linear(32,representation_dim)
-        )
 
         self.func = torch.nn.Sequential(
             torch.nn.Linear(input_dim, 100),
@@ -126,51 +116,44 @@ class VecDecoderImage(torch.nn.Module):
 
         self.lin_2 = torch.nn.Sequential(
             torch.nn.Linear(101,50*5*5),
-            torch.nn.Fold(output_size=(5,5),kernel_size=(5,5)),
-            torch.nn.BatchNorm2d(50),
-            torch.nn.ReLU6(),
         )
 
         self.conv = torch.nn.Sequential(
+            torch.nn.BatchNorm2d(50),
+            torch.nn.ReLU6(),
             torch.nn.ConvTranspose2d(50,5,5,2),
             torch.nn.BatchNorm2d(5),
             torch.nn.ReLU6(),
-            torch.nn.ConvTranspose2d(5,3,5,2),
+            torch.nn.ConvTranspose2d(5,3,5,2,padding=1,output_padding=1),
+            torch.nn.Sigmoid()
         )
     
     def forward(self, y, s):
 
-        s.view(-1,1)
-        z = self.lin_1(torch.cat((y,s)))
-        z = self.lin_2(torch.cat((z,s)))
-        output = self.conv(z + s.view((-1) + (1,)*(len(z.shape)+1)))
+        s = s.view(-1,1)
+        z = self.lin_1(torch.cat((y,s),1))
+        z = self.lin_2(torch.cat((z,s),1))
+        z = z.view(-1,50,5,5)
+        output = self.conv(z + s.view((-1,) + (1,)*(len(z.shape)-1)))
 
         return output
 
 class DecoderVector(torch.nn.Module):
 
-    def __init__(self, representation_dim, output_dim):
+    def __init__(self, representation_dim, output_dim, s_dim):
         super(DecoderVector,self).__init__() 
 
-        self.func = torch.nn.Sequential(
-            torch.nn.Linear(representation_dim+1,32),
-            torch.nn.BatchNorm1d(32),
-            torch.nn.ReLU6(),
-            torch.nn.Linear(32,16),
-            torch.nn.BatchNorm1d(16),
-            torch.nn.ReLU6(),
-            torch.nn.Linear(16,output_dim)
-        )
+        self.s_dim = s_dim
 
         self.func = torch.nn.Sequential(
-            torch.nn.Linear(representation_dim+1, 100),
+            torch.nn.Linear(representation_dim+self.s_dim, 100),
             torch.nn.ReLU(),
             torch.nn.Linear(100,output_dim)
         )
     
     def forward(self, y, s):
 
-        return self.func(torch.cat((y,s.view(-1,1)),1))
+        return self.func(torch.cat((y,s.view(-1,self.s_dim)),1))
 
 
 class Encoder(torch.nn.Module):
@@ -186,10 +169,7 @@ class Encoder(torch.nn.Module):
         else: 
             self.f_theta = VectorEncoder(input_dim, representation_dim)
         
-        if representation_type == 'image':
-            self.y_logvar_theta = torch.nn.Parameter(torch.Tensor([-1.0]))# * torch.ones(input_dim)))
-        else:
-            self.y_logvar_theta = torch.nn.Parameter(torch.Tensor(-1.0 * torch.ones(representation_dim)))
+        self.y_logvar_theta = torch.nn.Parameter(torch.Tensor([-1.0]))
 
     def encode(self, x):
 
@@ -210,19 +190,18 @@ class Encoder(torch.nn.Module):
 
 class Decoder(torch.nn.Module):
 
-    def __init__(self, representation_type='image', output_type='image', representation_dim=8, output_dim=1):
+    def __init__(self, representation_type='image', output_type=['image'], representation_dim=8, output_dim=[1], regression_dims=-1, s_dim=1):
         super(Decoder,self).__init__() 
 
-        if output_type == 'image':
+        if 'image' in output_type:
             if representation_type == 'image':
                 self.f_phi = DecoderImage()
             else:
                 self.f_phi = VecDecoderImage(representation_dim) 
         else:
-            self.f_phi = DecoderVector(representation_dim, output_dim)
-            if output_type == 'regression':
-                output_dim_reg = 1
-                self.out_logvar_phi = torch.nn.Parameter(torch.Tensor(-1.0 * torch.ones(output_dim_reg)))
+            self.f_phi = DecoderVector(representation_dim, sum(output_dim), s_dim)
+            if 'regression' in output_type:
+                self.out_logvar_phi = torch.nn.Parameter(torch.Tensor(-1.0 * torch.ones(output_dim[output_type.index('regression')])))
     
 
     def forward(self, y, s):
