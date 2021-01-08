@@ -57,3 +57,47 @@ def evaluate_fair_representations(encoder, train_dataset, test_dataset, device, 
     if encoder is not None:
         encoder = encoder.to(device)
     return np.array([accuracy, accuracy_s, discrimination, error_gap, equalized_odds])
+
+def evaluate_private_representations(encoder, train_dataset, test_dataset, device, verbose = False, 
+    predictor_type='Linear', respects_MC = True): 
+
+    if encoder is not None:
+        encoder = encoder.to('cpu').eval() 
+
+    X, S = train_dataset.data, train_dataset.hidden 
+    if encoder is not None:
+        if respects_MC:
+            Y, _ = encoder(torch.FloatTensor(X)) 
+        else: 
+            Y, _ = encoder(torch.FloatTensor(X),torch.FloatTensor(S))
+        Y = Y.detach().numpy()
+    else: 
+        Y = X
+
+    if predictor_type == 'Linear':
+        s_predictor = sklearn.linear_model.LogisticRegression() 
+    elif predictor_type == 'RandomForest':
+        s_predictor = sklearn.ensemble.RandomForestClassifier()
+    else: # Majority class 
+        s_predictor = sklearn.dummy.DummyClassifier(strategy='prior')
+
+    s_predictor.fit(Y, S) 
+
+    X, S = test_dataset.data, test_dataset.hidden 
+    if encoder is not None: 
+        if respects_MC:
+            Y, _ = encoder(torch.FloatTensor(X))
+        else: 
+            Y, _ = encoder(torch.FloatTensor(X),torch.FloatTensor(S))
+        Y = Y.detach().numpy()
+    else: 
+        Y = X
+
+    s_pred_prob = s_predictor.predict_proba(Y)
+    accuracy_s = metrics.get_accuracy_numpy(s_pred_prob, S) 
+    
+    print(f'Accuracy on S ({predictor_type}): {accuracy_s}') if verbose else 0 
+
+    if encoder is not None:
+        encoder = encoder.to(device)
+    return accuracy_s

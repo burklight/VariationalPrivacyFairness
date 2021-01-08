@@ -31,8 +31,8 @@ if experiment == 1:
     output_dim = [(3,28,28)]
     problem = 'privacy'
     input_dim = (3,28,28)
-    eval_rate = 500 # evaluate on last epoch
-    beta = 1 
+    eval_rate = 100#500 # evaluate on last epoch
+    gamma = 1 
     epochs = 501 
     batch_size = 2048
 
@@ -40,7 +40,7 @@ if experiment == 1:
 
     network = variational_privacy_fairness.VPAF(
         input_type=input_type, representation_type=representation_type, output_type=output_type,
-        problem=problem, beta=beta, input_dim=input_dim, output_dim=output_dim
+        problem=problem, gamma=gamma, input_dim=input_dim, output_dim=output_dim
     ).to(device)
     network.apply(utils.weight_init)
     network.train()
@@ -210,8 +210,12 @@ elif experiment == 4:
     IXY = np.zeros(N)
     H_X_given_SY = np.zeros(N)
     ISY = np.zeros(N)
+    accuracy_s_lin = np.zeros(N)
+    accuracy_s_rf = np.zeros(N)
 
     trainset, testset = utils.get_adult('privacy')
+    accuracy_s_prior = evaluations.evaluate_private_representations(None, trainset, testset, device, verbose=True, predictor_type='Dummy')
+
 
     for i, gamma in enumerate(gammas):
 
@@ -228,6 +232,9 @@ elif experiment == 4:
 
         # Evaluate the representations performance
         network.eval()
+        accuracy_s_lin[i] = evaluations.evaluate_private_representations(network.encoder, trainset, testset, device, verbose=True, predictor_type='Linear')
+        accuracy_s_rf[i] = evaluations.evaluate_private_representations(network.encoder, trainset, testset, device, verbose=True, predictor_type='RandomForest')
+
         IXY[i], H_X_given_SY[i] = network.evaluate(testset,True,'')
         X, T, S = testset.data, testset.targets, testset.hidden  
         Y, Y_mean = network.encoder(torch.FloatTensor(X).to(device)) 
@@ -240,6 +247,9 @@ elif experiment == 4:
     np.save(logsdir+'IXY',IXY)
     np.save(logsdir+'H_X_given_SY',H_X_given_SY)
     np.save(logsdir+'ISY',ISY)
+    np.save(logsdir+'accuracy_s_lin',accuracy_s_lin)
+    np.save(logsdir+'accuracy_s_rf',accuracy_s_rf)
+    np.save(logsdir+'accuracy_s_prior',accuracy_s_prior)
 
 # Experiment 5: Privacy on the Colored MNIST Dataset 
 
@@ -412,8 +422,11 @@ elif experiment == 7:
     metrics_lin = np.zeros((N, 5))
     metrics_rf = np.zeros((N, 5))
     ISY = np.zeros(N)
+    accuracy_s_lin = np.zeros(N)
+    accuracy_s_rf = np.zeros(N)
 
     trainset, testset = utils.get_compas('privacy')
+    accuracy_s_prior = evaluations.evaluate_private_representations(None, trainset, testset, device, verbose=True, predictor_type='Dummy')
 
     for i, gamma in enumerate(gammas):
 
@@ -430,6 +443,8 @@ elif experiment == 7:
 
         # Evaluate the representations performance
         network.eval()
+        accuracy_s_lin[i] = evaluations.evaluate_private_representations(network.encoder, trainset, testset, device, verbose=True, predictor_type='Linear')
+        accuracy_s_rf[i] = evaluations.evaluate_private_representations(network.encoder, trainset, testset, device, verbose=True, predictor_type='RandomForest')
         IXY[i], H_X_given_SY[i] = network.evaluate(testset,True,'')
         X, T, S = testset.data, testset.targets, testset.hidden  
         Y, Y_mean = network.encoder(torch.FloatTensor(X).to(device)) 
@@ -442,3 +457,6 @@ elif experiment == 7:
     np.save(logsdir+'IXY',IXY)
     np.save(logsdir+'H_X_given_SY',H_X_given_SY)
     np.save(logsdir+'ISY',ISY)
+    np.save(logsdir+'accuracy_s_lin',accuracy_s_lin)
+    np.save(logsdir+'accuracy_s_rf',accuracy_s_rf)
+    np.save(logsdir+'accuracy_s_prior',accuracy_s_prior)

@@ -116,17 +116,24 @@ class VPAF(torch.nn.Module):
                 H_X_given_SY_ub += self.get_H_output_given_SY_ub(output, t)
                 if self.representation_type == 'image':
                     if it == 0 and self.s_type == 'classes':
-                        reducer = umap.UMAP(random_state=0)
-                        reducer.fit(y_mean.cpu().view(batch_size,-1),y=s.cpu())
+                        reducer_y = umap.UMAP(random_state=0)
+                        reducer_y.fit(y_mean.cpu().view(batch_size,-1),y=s.cpu())
+                        reducer_x = umap.UMAP(random_state=0)
+                        reducer_x.fit(x.cpu().view(batch_size,-1),y=s.cpu())
                     if it == 1:
                         if self.s_type == 'classes':
-                            embedding_s = reducer.transform(y_mean.cpu().view(batch_size,-1))
-                        reducer = umap.UMAP(random_state=0)
-                        embedding = reducer.fit_transform(y_mean.cpu().view(batch_size,-1))
+                            embedding_s_y = reducer_y.transform(y_mean.cpu().view(batch_size,-1))
+                            embedding_s_x = reducer_x.transform(x.cpu().view(batch_size,-1))
+                        reducer_y = umap.UMAP(random_state=0)
+                        reducer_x = umap.UMAP(random_state=0)
+                        embedding_y = reducer_y.fit_transform(y_mean.cpu().view(batch_size,-1))
+                        embedding_x = reducer_x.fit_transform(x.cpu().view(batch_size,-1))
                         if self.s_type == 'classes':
-                            plot_embeddings(embedding, embedding_s, s.cpu().view(batch_size).long(), figs_dir)
+                            plot_embeddings(embedding_y, embedding_s_y, s.cpu().view(batch_size).long(), figs_dir, 'y')
+                            plot_embeddings(embedding_x, embedding_s_x, s.cpu().view(batch_size).long(), figs_dir, 'x')
                         else: 
-                            plot_embeddings(embedding, embedding, -1, figs_dir)
+                            plot_embeddings(embedding_y, embedding_y, -1, figs_dir, 'y')
+                            plot_embeddings(embedding_y, embedding_y, -1, figs_dir, 'x')
         
         IXY_ub /= N
         H_X_given_SY_ub /= N          

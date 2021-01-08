@@ -3,10 +3,10 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors 
 import os
 
-def plot_embeddings(embedding, embedding_s, s, figsdir):
+def plot_embeddings(embedding, embedding_s, s, figsdir, var):
 
-    _plot_embedding(embedding, s, os.path.join(figsdir,'normal_reduction'))
-    _plot_embedding(embedding_s, s, os.path.join(figsdir,'secret_reduction'))
+    _plot_embedding(embedding, s, os.path.join(figsdir,f'{var}_normal_reduction'))
+    _plot_embedding(embedding_s, s, os.path.join(figsdir,f'{var}_secret_reduction'))
 
 def _plot_embedding(embedding, s, name_fig):
 
