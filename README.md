@@ -1,6 +1,7 @@
 # Code for "A Variational Approach to Privacy and Fairness"
 
-In this repo you can find the code for the paper ["A Variational Approach to Privacy and Fairness"](https://arxiv.org/abs/2006.06332) from the _2nd Privacy Preserving Artificial Intelligence (PPAI) Workshop of the AAAI Conference on Artificial Intelligence_.
+In this repo you can find the code for the paper ["A Variational Approach to Privacy and Fairness"](https://burklight.github.io/preprints/itw-2021.pdf).
+
 
 A guide on how to run the code can be found on [this notebook](https://github.com/burklight/VariationalPrivacyFairness/blob/master/Guide.ipynb).
 
