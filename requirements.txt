@@ -2,7 +2,7 @@ numpy==1.18.4
 pandas==1.0.3
 matplotlib==3.0.2
 scikit-learn==0.22.1
-torch==1.2.0
+torch==2.2.0
 torchvision==0.4.0
 progressbar2==3.39.2
 umap
